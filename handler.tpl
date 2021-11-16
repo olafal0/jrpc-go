@@ -8,7 +8,10 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"net/http"
-  "{{.SpecPkgPath}}"
+	"{{.SpecPkgPath}}"
+	{{range $pkg := .Imports -}}
+	"{{$pkg}}"
+	{{end -}}
 )
 
 {{range $method := .Methods}}

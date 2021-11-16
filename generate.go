@@ -9,6 +9,7 @@ import (
 	"go/format"
 	"log"
 	"os"
+	"regexp"
 	"strings"
 	"text/template"
 
@@ -44,6 +45,7 @@ type handlerSet struct {
 	SpecPkgName string
 	SpecPkgPath string
 	SpecModule  string
+	Imports     []string
 	Receiver    string
 	Methods     []method
 }
@@ -61,6 +63,12 @@ func unexport(s string) string {
 		uppers++
 	}
 	return strings.ToLower(s[0:uppers]) + s[uppers:]
+}
+
+func importPathToPkgName(s string) string {
+	pathMatcher := regexp.MustCompile(`[\w.]+\/`)
+	replaced := pathMatcher.ReplaceAll([]byte(s), []byte{})
+	return string(replaced)
 }
 
 func main() {
@@ -117,6 +125,7 @@ func (h *handlerSet) parsePackage() {
 			packages.NeedTypes |
 			packages.NeedSyntax |
 			packages.NeedTypesInfo |
+			packages.NeedImports |
 			packages.NeedModule,
 		Tests: false,
 	}
@@ -131,6 +140,14 @@ func (h *handlerSet) parsePackage() {
 	h.SpecPkgPath = pkg.PkgPath
 	h.SpecModule = pkg.Module.Path
 	h.Methods = make([]method, 0)
+	h.Imports = make([]string, 0, len(pkg.Imports))
+
+	for importName := range pkg.Imports {
+		if importName == "context" {
+			continue
+		}
+		h.Imports = append(h.Imports, importName)
+	}
 
 	for _, f := range pkg.Syntax {
 		ast.Inspect(f, func(n ast.Node) bool {
@@ -153,7 +170,7 @@ func (h *handlerSet) parsePackage() {
 					// Strip module name from type descriptor
 					// e.g. if the type is *sourcepkg.SourceType, the complete type will be
 					// *module/sourcepkg.SourceType
-					fieldType = strings.Replace(fieldType, fmt.Sprintf("%s/", h.SpecModule), "", 1)
+					fieldType = importPathToPkgName(fieldType)
 					if fieldType == "context.Context" {
 						meth.TakesCtx = true
 						continue
