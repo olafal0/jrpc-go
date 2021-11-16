@@ -12,6 +12,6 @@ import (
 
 func main() {
 	svc := &example.Service{}
-	mux := handlers.Handler(svc)
+	mux := handlers.HTTPHandler(svc)
 	log.Fatal(http.ListenAndServe(":7744", mux))
 }

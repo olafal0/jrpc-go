@@ -2,12 +2,18 @@ package example
 
 import (
 	"context"
-	"example/somelib"
+	"net/http"
+
+	"github.com/google/uuid"
 )
 
-//go:generate go run ../generate.go -genpath handlers -genpkg handlers -receiver Service
+//go:generate go run ../generate.go -genpkg handlers -receiver Service
 
 type Service struct{}
+
+func NewService() *Service {
+	return &Service{}
+}
 
 type User struct {
 	ID       string
@@ -21,9 +27,9 @@ func (s *Service) CreateUser(ctx context.Context, username string) (*User, error
 	}, nil
 }
 
-func (s *Service) GetUser(ctx context.Context, userID somelib.UID) (*User, error) {
+func (s *Service) GetUser(ctx context.Context, req *http.Request) (*User, error) {
 	return &User{
-		ID:       "random-uuid",
+		ID:       uuid.NewString(),
 		Username: "some user id",
 	}, nil
 }

@@ -5,102 +5,90 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"example"
-	"example/somelib"
-	"io/ioutil"
+	"fmt"
 	"net/http"
 )
 
-type createUserInput struct {
-	Username string `json:"username"`
-}
+type JSONCaller func(ctx context.Context, req json.RawMessage) (json.RawMessage, error)
 
-func createUserHandler(recv *example.Service) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" {
-			http.Error(w, "Only POST requests supported", http.StatusMethodNotAllowed)
-			return
-		}
-
-		bodyBytes, err := ioutil.ReadAll(r.Body)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-
-		input := createUserInput{}
-		err = json.Unmarshal(bodyBytes, &input)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-
-		res, err := recv.CreateUser(
-			r.Context(),
-			input.Username,
-		)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		resBytes, err := json.Marshal(res)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.Write(resBytes)
+func (j JSONCaller) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	d := json.NewDecoder(r.Body)
+	rawReqBody := json.RawMessage{}
+	if err := d.Decode(&rawReqBody); err != nil {
+		http.Error(w, "the json request could not be decoded", http.StatusBadRequest)
+		return
 	}
-}
 
-type getUserInput struct {
-	UserID somelib.UID `json:"userID"`
-}
-
-func getUserHandler(recv *example.Service) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" {
-			http.Error(w, "Only POST requests supported", http.StatusMethodNotAllowed)
-			return
-		}
-
-		bodyBytes, err := ioutil.ReadAll(r.Body)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-
-		input := getUserInput{}
-		err = json.Unmarshal(bodyBytes, &input)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-
-		res, err := recv.GetUser(
-			r.Context(),
-			input.UserID,
-		)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		resBytes, err := json.Marshal(res)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.Write(resBytes)
+	resp, err := j(r.Context(), rawReqBody)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
+	w.Write(resp)
 }
 
-func Handler(recv *example.Service) http.Handler {
+func HTTPHandler(recv *example.Service) http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/CreateUser", createUserHandler(recv))
-	mux.HandleFunc("/GetUser", getUserHandler(recv))
+	mux.Handle("/CreateUser", ServiceCreateUserCaller(recv))
+	mux.Handle("/GetUser", ServiceGetUserCaller(recv))
 	return mux
+}
+
+func Caller(recv *example.Service) func(ctx context.Context, method string, req json.RawMessage) (json.RawMessage, error) {
+	methods := map[string]JSONCaller{
+		"CreateUser": ServiceCreateUserCaller(recv),
+		"GetUser":    ServiceGetUserCaller(recv),
+	}
+	return func(ctx context.Context, method string, req json.RawMessage) (json.RawMessage, error) {
+		caller, ok := methods[method]
+		if !ok {
+			return nil, fmt.Errorf("method %s not found", method)
+		}
+		return caller(ctx, req)
+	}
+}
+
+func ServiceCreateUserCaller(recv *example.Service) JSONCaller {
+	return func(ctx context.Context, req json.RawMessage) (json.RawMessage, error) {
+		var input string
+		err := json.Unmarshal(req, &input)
+		if err != nil {
+			return nil, err
+		}
+
+		resp, err := recv.CreateUser(ctx, input)
+		if err != nil {
+			return nil, err
+		}
+
+		respBytes, err := json.Marshal(resp)
+		if err != nil {
+			return nil, err
+		}
+		return respBytes, nil
+	}
+}
+
+func ServiceGetUserCaller(recv *example.Service) JSONCaller {
+	return func(ctx context.Context, req json.RawMessage) (json.RawMessage, error) {
+		var input *http.Request
+		err := json.Unmarshal(req, &input)
+		if err != nil {
+			return nil, err
+		}
+
+		resp, err := recv.GetUser(ctx, input)
+		if err != nil {
+			return nil, err
+		}
+
+		respBytes, err := json.Marshal(resp)
+		if err != nil {
+			return nil, err
+		}
+		return respBytes, nil
+	}
 }

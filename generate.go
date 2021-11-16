@@ -9,7 +9,6 @@ import (
 	"go/format"
 	"log"
 	"os"
-	"regexp"
 	"strings"
 	"text/template"
 
@@ -31,10 +30,9 @@ type methodParam struct {
 }
 
 type method struct {
-	Name         string
-	ExportedName string
-	TakesCtx     bool
-	Params       []methodParam
+	Name    string
+	Takes   methodParam
+	Returns methodParam
 }
 
 type handlerSet struct {
@@ -45,7 +43,7 @@ type handlerSet struct {
 	SpecPkgName string
 	SpecPkgPath string
 	SpecModule  string
-	Imports     []string
+	Imports     map[string]bool
 	Receiver    string
 	Methods     []method
 }
@@ -65,19 +63,40 @@ func unexport(s string) string {
 	return strings.ToLower(s[0:uppers]) + s[uppers:]
 }
 
-func importPathToPkgName(s string) string {
-	pathMatcher := regexp.MustCompile(`[\w.]+\/`)
-	replaced := pathMatcher.ReplaceAll([]byte(s), []byte{})
-	return string(replaced)
+// moduleNameAndType splits a fully qualified type name into two parts: the import
+// path (what you actually import to use the package), and the type name
+// (what you use to declare a variable of that type).
+//
+// For example, a pointer to an http Request (*net/http.Request) becomes the
+// import path "net/http", and the type "*http.Request".
+func moduleNameAndType(s string) (importPath string, typeName string) {
+	isPtr := s[0] == '*'
+	// import path is "" if no ".", or s up to last "."
+	if !strings.Contains(s, ".") {
+		return "", s
+	}
+	importPath = s[:strings.LastIndex(s, ".")]
+	if isPtr {
+		importPath = importPath[1:]
+	}
+	// typeName is s if no "."
+	// else, everything after last "/" with "*" prepended (if pointer)
+	if !strings.Contains(s, "/") {
+		return importPath, s
+	}
+	typeName = s[strings.LastIndex(s, "/")+1:]
+	if isPtr {
+		typeName = "*" + typeName
+	}
+	return importPath, typeName
 }
 
 func main() {
-	genPath := flag.String("genpath", "server", "the file path to generate files in")
 	genPkg := flag.String("genpkg", "server", "the package name to generate")
 	receiver := flag.String("receiver", "Service", "the handler receiver type to use")
 	flag.Parse()
 
-	err := os.MkdirAll(*genPath, os.ModeDir|0755)
+	err := os.MkdirAll(*genPkg, os.ModeDir|0755)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -87,7 +106,7 @@ func main() {
 		Receiver: *receiver,
 	}
 
-	h.GenFile = fmt.Sprintf("%s%chandler.go", *genPath, os.PathSeparator)
+	h.GenFile = fmt.Sprintf("%s%chandler.go", *genPkg, os.PathSeparator)
 
 	h.parsePackage()
 
@@ -140,14 +159,7 @@ func (h *handlerSet) parsePackage() {
 	h.SpecPkgPath = pkg.PkgPath
 	h.SpecModule = pkg.Module.Path
 	h.Methods = make([]method, 0)
-	h.Imports = make([]string, 0, len(pkg.Imports))
-
-	for importName := range pkg.Imports {
-		if importName == "context" {
-			continue
-		}
-		h.Imports = append(h.Imports, importName)
-	}
+	h.Imports = make(map[string]bool, len(pkg.Imports))
 
 	for _, f := range pkg.Syntax {
 		ast.Inspect(f, func(n ast.Node) bool {
@@ -155,11 +167,12 @@ func (h *handlerSet) parsePackage() {
 				if !funcDecl.Name.IsExported() {
 					return false
 				}
+				if funcDecl.Recv.NumFields() < 1 {
+					return false
+				}
 				// Exported func declaration - turn it into a handler
 				meth := method{}
-				meth.ExportedName = funcDecl.Name.Name
-				meth.Name = unexport(meth.ExportedName)
-				meth.Params = make([]methodParam, 0)
+				meth.Name = funcDecl.Name.Name
 
 				for _, field := range funcDecl.Type.Params.List {
 					if len(field.Names) != 1 {
@@ -167,18 +180,18 @@ func (h *handlerSet) parsePackage() {
 					}
 					fieldName := field.Names[0].Name
 					fieldType := pkg.TypesInfo.TypeOf(field.Type).String()
-					// Strip module name from type descriptor
-					// e.g. if the type is *sourcepkg.SourceType, the complete type will be
-					// *module/sourcepkg.SourceType
-					fieldType = importPathToPkgName(fieldType)
-					if fieldType == "context.Context" {
-						meth.TakesCtx = true
-						continue
+
+					importPath, typeName := moduleNameAndType(fieldType)
+					if importPath != "" {
+						h.Imports[importPath] = true
 					}
-					meth.Params = append(meth.Params, methodParam{
-						Name: fieldName,
-						Type: fieldType,
-					})
+
+					if typeName != "context.Context" {
+						meth.Takes = methodParam{
+							Name: fieldName,
+							Type: typeName,
+						}
+					}
 				}
 
 				h.Methods = append(h.Methods, meth)

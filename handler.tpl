@@ -6,69 +6,75 @@ package {{.PkgName}}
 
 import (
 	"encoding/json"
-	"io/ioutil"
+	"context"
+	"fmt"
 	"net/http"
 	"{{.SpecPkgPath}}"
-	{{range $pkg := .Imports -}}
+	{{range $pkg, $element := .Imports -}}
 	"{{$pkg}}"
 	{{end -}}
 )
 
-{{range $method := .Methods}}
-type {{$method.Name}}Input struct {
-  {{range $param := $method.Params}}
-	{{ export $param.Name}} {{$param.Type}} `json:"{{$param.Name}}"`
-  {{end}}
-}
+type JSONCaller func(ctx context.Context, req json.RawMessage) (json.RawMessage, error)
 
-func {{$method.Name}}Handler(recv *{{$.SpecPkgName}}.{{$.Receiver}}) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" {
-			http.Error(w, "Only POST requests supported", http.StatusMethodNotAllowed)
-			return
-		}
-
-		bodyBytes, err := ioutil.ReadAll(r.Body)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-
-		input := {{$method.Name}}Input{}
-		err = json.Unmarshal(bodyBytes, &input)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-
-		res, err := recv.{{$method.ExportedName}}(
-			{{- if $method.TakesCtx}}
-			r.Context(),
-			{{- end}}
-			{{range $param := $method.Params -}}
-			input.{{ export $param.Name}},
-			{{end}}
-		)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		resBytes, err := json.Marshal(res)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.Write(resBytes)
+func (j JSONCaller) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	d := json.NewDecoder(r.Body)
+	rawReqBody := json.RawMessage{}
+	if err := d.Decode(&rawReqBody); err != nil {
+		http.Error(w, "the json request could not be decoded", http.StatusBadRequest)
+		return
 	}
-}
-{{end}}
 
-func Handler(recv *{{$.SpecPkgName}}.{{.Receiver}}) http.Handler {
+	resp, err := j(r.Context(), rawReqBody)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Write(resp)
+}
+
+func HTTPHandler(recv *{{$.SpecPkgName}}.{{.Receiver}}) http.Handler {
 	mux := http.NewServeMux()
   {{- range $method := .Methods}}
-	mux.HandleFunc("/{{$method.ExportedName}}", {{$method.Name}}Handler(recv))
+	mux.Handle("/{{$method.Name}}", {{$.Receiver}}{{$method.Name}}Caller(recv))
   {{- end}}
 	return mux
 }
+
+func Caller(recv *{{$.SpecPkgName}}.{{.Receiver}}) func(ctx context.Context, method string, req json.RawMessage) (json.RawMessage, error) {
+	methods := map[string]JSONCaller{
+		{{range $method := .Methods -}}
+		"{{$method.Name}}": {{$.Receiver}}{{$method.Name}}Caller(recv),
+		{{end}}
+	}
+	return func(ctx context.Context, method string, req json.RawMessage) (json.RawMessage, error) {
+		caller, ok := methods[method]
+		if !ok {
+			return nil, fmt.Errorf("method %s not found", method)
+		}
+		return caller(ctx, req)
+	}
+}
+
+{{range $method := .Methods}}
+func {{$.Receiver}}{{$method.Name}}Caller(recv *{{$.SpecPkgName}}.{{$.Receiver}}) JSONCaller {
+	return func (ctx context.Context, req json.RawMessage) (json.RawMessage, error) {
+		var input {{$method.Takes.Type}}
+		err := json.Unmarshal(req, &input)
+		if err != nil {
+			return nil, err
+		}
+
+		resp, err := recv.{{$method.Name}}(ctx, input)
+		if err != nil {
+			return nil, err
+		}
+
+		respBytes, err := json.Marshal(resp)
+		if err != nil {
+			return nil, err
+		}
+		return respBytes, nil
+	}
+}
+{{end}}
