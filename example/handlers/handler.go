@@ -37,17 +37,19 @@ func HTTPHandler(recv *example.Service) http.Handler {
 	return mux
 }
 
-func Caller(recv *example.Service) func(ctx context.Context, method string, req json.RawMessage) (json.RawMessage, error) {
+type RPCCaller func(method string) (JSONCaller, error)
+
+func Caller(recv *example.Service) RPCCaller {
 	methods := map[string]JSONCaller{
 		"CreateUser": ServiceCreateUserCaller(recv),
 		"GetUser":    ServiceGetUserCaller(recv),
 	}
-	return func(ctx context.Context, method string, req json.RawMessage) (json.RawMessage, error) {
+	return func(method string) (JSONCaller, error) {
 		caller, ok := methods[method]
 		if !ok {
-			return nil, fmt.Errorf("method %s not found", method)
+			return nil, fmt.Errorf("unknown method %s", method)
 		}
-		return caller(ctx, req)
+		return caller, nil
 	}
 }
 

@@ -41,18 +41,20 @@ func HTTPHandler(recv *{{$.SpecPkgName}}.{{.Receiver}}) http.Handler {
 	return mux
 }
 
-func Caller(recv *{{$.SpecPkgName}}.{{.Receiver}}) func(ctx context.Context, method string, req json.RawMessage) (json.RawMessage, error) {
+type RPCCaller func(method string) (JSONCaller, error)
+
+func Caller(recv *{{$.SpecPkgName}}.{{.Receiver}}) RPCCaller {
 	methods := map[string]JSONCaller{
 		{{range $method := .Methods -}}
 		"{{$method.Name}}": {{$.Receiver}}{{$method.Name}}Caller(recv),
 		{{end}}
 	}
-	return func(ctx context.Context, method string, req json.RawMessage) (json.RawMessage, error) {
+	return func(method string) (JSONCaller, error) {
 		caller, ok := methods[method]
 		if !ok {
-			return nil, fmt.Errorf("method %s not found", method)
+			return nil, fmt.Errorf("unknown method %s", method)
 		}
-		return caller(ctx, req)
+		return caller, nil
 	}
 }
 
