@@ -25,8 +25,9 @@ var configTemplate = template.Must(template.New("handlers").Funcs(
 ).Parse(configSrc))
 
 type methodParam struct {
-	Name string
-	Type string
+	Name  string
+	Type  string
+	IsPtr bool
 }
 
 type method struct {
@@ -200,8 +201,9 @@ func (h *handlerSet) parsePackage() {
 
 					if typeName != "context.Context" {
 						meth.Takes = methodParam{
-							Name: fieldName,
-							Type: typeName,
+							Name:  fieldName,
+							Type:  strings.TrimPrefix(typeName, "*"),
+							IsPtr: typeName[0] == '*',
 						}
 					}
 				}

@@ -71,7 +71,7 @@ func {{$.Receiver}}{{$method.Name}}Caller(recv *{{$.SpecPkgName}}.{{$.Receiver}}
 			return nil, err
 		}
 
-		resp, err := recv.{{$method.Name}}(ctx, input)
+		resp, err := recv.{{$method.Name}}(ctx, {{if $method.Takes.IsPtr}}&{{end}}input)
 		if err != nil {
 			return nil, err
 		}
