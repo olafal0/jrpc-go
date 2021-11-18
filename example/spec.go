@@ -2,6 +2,7 @@ package example
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -18,6 +19,17 @@ func NewService() *Service {
 type User struct {
 	ID       string
 	Username string
+}
+
+// Marshal returns the JSON encoding of v. Defining this method allows custom
+// marshaling in jrpc-generated code.
+func (s *Service) Marshal(v interface{}) ([]byte, error) {
+	return json.MarshalIndent(v, "", "  ")
+}
+
+// Unmarshal also allows custom unmarshaling in jrpc-generated code.
+func (s *Service) Unmarshal(data []byte, v interface{}) error {
+	return json.Unmarshal(data, v)
 }
 
 func (s *Service) CreateUser(ctx context.Context, username string) (*User, error) {

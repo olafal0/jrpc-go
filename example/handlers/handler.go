@@ -56,7 +56,7 @@ func Caller(recv *example.Service) RPCCaller {
 func ServiceCreateUserCaller(recv *example.Service) JSONCaller {
 	return func(ctx context.Context, req json.RawMessage) (json.RawMessage, error) {
 		var input string
-		err := json.Unmarshal(req, &input)
+		err := recv.Unmarshal(req, &input)
 		if err != nil {
 			return nil, err
 		}
@@ -66,7 +66,7 @@ func ServiceCreateUserCaller(recv *example.Service) JSONCaller {
 			return nil, err
 		}
 
-		respBytes, err := json.Marshal(resp)
+		respBytes, err := recv.Marshal(resp)
 		if err != nil {
 			return nil, err
 		}
@@ -77,7 +77,7 @@ func ServiceCreateUserCaller(recv *example.Service) JSONCaller {
 func ServiceGetUserCaller(recv *example.Service) JSONCaller {
 	return func(ctx context.Context, req json.RawMessage) (json.RawMessage, error) {
 		var input *http.Request
-		err := json.Unmarshal(req, &input)
+		err := recv.Unmarshal(req, &input)
 		if err != nil {
 			return nil, err
 		}
@@ -87,7 +87,7 @@ func ServiceGetUserCaller(recv *example.Service) JSONCaller {
 			return nil, err
 		}
 
-		respBytes, err := json.Marshal(resp)
+		respBytes, err := recv.Marshal(resp)
 		if err != nil {
 			return nil, err
 		}

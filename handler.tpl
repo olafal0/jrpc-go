@@ -62,7 +62,11 @@ func Caller(recv *{{$.SpecPkgName}}.{{.Receiver}}) RPCCaller {
 func {{$.Receiver}}{{$method.Name}}Caller(recv *{{$.SpecPkgName}}.{{$.Receiver}}) JSONCaller {
 	return func (ctx context.Context, req json.RawMessage) (json.RawMessage, error) {
 		var input {{$method.Takes.Type}}
+		{{if $.CustomUnmarshal -}}
+		err := recv.Unmarshal(req, &input)
+		{{- else -}}
 		err := json.Unmarshal(req, &input)
+		{{- end}}
 		if err != nil {
 			return nil, err
 		}
@@ -72,7 +76,11 @@ func {{$.Receiver}}{{$method.Name}}Caller(recv *{{$.SpecPkgName}}.{{$.Receiver}}
 			return nil, err
 		}
 
+		{{if $.CustomMarshal -}}
+		respBytes, err := recv.Marshal(resp)
+		{{- else -}}
 		respBytes, err := json.Marshal(resp)
+		{{- end}}
 		if err != nil {
 			return nil, err
 		}

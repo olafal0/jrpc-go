@@ -5,7 +5,7 @@
 ```go
 package service
 
-//go:generate jrpc-go -genpath handlers -genpkg handlers -receiver Service
+//go:generate jrpc-go -genpkg handlers -receiver Service
 
 type Service struct{}
 
@@ -37,7 +37,7 @@ You can use the generated code like this:
 ```go
 func main() {
   svc := &example.Service{}
-  mux := handlers.Handler(svc)
+  mux := handlers.HTTPHandler(svc)
   log.Fatal(http.ListenAndServe(":7744", mux))
 }
 ```

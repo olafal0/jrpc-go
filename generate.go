@@ -36,16 +36,18 @@ type method struct {
 }
 
 type handlerSet struct {
-	GenFile     string
-	TestFile    string
-	PkgName     string
-	PkgPath     string
-	SpecPkgName string
-	SpecPkgPath string
-	SpecModule  string
-	Imports     map[string]bool
-	Receiver    string
-	Methods     []method
+	GenFile         string
+	TestFile        string
+	PkgName         string
+	PkgPath         string
+	SpecPkgName     string
+	SpecPkgPath     string
+	SpecModule      string
+	Imports         map[string]bool
+	Receiver        string
+	Methods         []method
+	CustomMarshal   bool
+	CustomUnmarshal bool
 }
 
 func export(s string) string {
@@ -173,6 +175,16 @@ func (h *handlerSet) parsePackage() {
 				// Exported func declaration - turn it into a handler
 				meth := method{}
 				meth.Name = funcDecl.Name.Name
+
+				// If the receiver provides marshal or unmarshal methods, use them for encoding
+				if meth.Name == "Marshal" {
+					h.CustomMarshal = true
+					return false
+				}
+				if meth.Name == "Unmarshal" {
+					h.CustomUnmarshal = true
+					return false
+				}
 
 				for _, field := range funcDecl.Type.Params.List {
 					if len(field.Names) != 1 {
