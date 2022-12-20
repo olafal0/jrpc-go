@@ -173,6 +173,21 @@ func (h *handlerSet) parsePackage() {
 				if funcDecl.Recv.NumFields() < 1 {
 					return false
 				}
+
+				belongsToReceiver := false
+				for _, rec := range funcDecl.Recv.List {
+					starExp, ok := rec.Type.(*ast.StarExpr)
+					if ok {
+						if starExp.X.(*ast.Ident).Name == h.Receiver {
+							belongsToReceiver = true
+							break
+						}
+					}
+				}
+				if !belongsToReceiver {
+					return false
+				}
+
 				// Exported func declaration - turn it into a handler
 				meth := method{}
 				meth.Name = funcDecl.Name.Name
